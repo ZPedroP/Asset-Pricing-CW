@@ -202,7 +202,7 @@ for name, model in models.items():
 	)
 
 	# Calculate Sharpe Ratio
-	sharpe_ratio = calculate_sharpe_ratio(strategy_returns, merged_data["6M_Cumulative_Risk_Free_Rate"].mean())
+	sharpe_ratio = calculate_sharpe_ratio(strategy_returns, merged_data["6M_Cumulative_Risk_Free_Rate"])
 	
 	predictions = best_model.predict(X)
 	# Store results
@@ -282,7 +282,7 @@ stacking_strategy_returns = np.where(
 )
 
 # Calculate Sharpe Ratio for Stacking Ensemble
-sharpe_stack = calculate_sharpe_ratio(stacking_strategy_returns, merged_data["6M_Cumulative_Risk_Free_Rate"].mean())
+sharpe_stack = calculate_sharpe_ratio(stacking_strategy_returns, merged_data["6M_Cumulative_Risk_Free_Rate"])
 
 # Add Stacking Ensemble results to performance metrics
 performance_metrics.append({
@@ -323,17 +323,10 @@ for name, result in results.items():
 		merged_data["6M_Return"],
 		merged_data["6M_Cumulative_Risk_Free_Rate"]
 	)
-	merged_data[f"{name}_Cumulative"] = (1 + merged_data[f"{name}_Strategy_Return"]).cumprod()
-
-# Market cumulative returns for comparison
-merged_data["Cumulative_Market"] = (1 + merged_data["6M_Return"]).cumprod()
+	merged_data[f"{name}_Cumulative"] = merged_data[f"{name}_Strategy_Return"]
 
 # Add stacking strategy returns to merged_data
 merged_data["Stacking_Strategy_Return"] = stacking_strategy_returns
-merged_data["Stacking_Cumulative"] = (1 + merged_data["Stacking_Strategy_Return"]).cumprod()
-
-# Calculate cumulative returns using only the risk-free rate
-merged_data["Risk_Free_Cumulative"] = (1 + merged_data["6M_Cumulative_Risk_Free_Rate"]).cumprod()
 
 
 """ --- 7. Plot Results --- """
@@ -351,14 +344,13 @@ for name in results.keys():
 # Plot Stacking Ensemble results
 plt.plot(
 	merged_data["Date"],
-	merged_data["Stacking_Cumulative"],
+	merged_data["Stacking_Strategy_Return"],
 	label="Stacking Ensemble Strategy",
-	linestyle=":"
 )
 
 plt.plot(
 	merged_data["Date"],
-	merged_data["Cumulative_Market"],
+	merged_data["6M_Return"],
 	label="Market Returns",
 	linewidth=2,
 	linestyle="--"
@@ -367,7 +359,7 @@ plt.plot(
 # Plot Risk-Free cumulative returns
 plt.plot(
     merged_data["Date"],
-    merged_data["Risk_Free_Cumulative"],
+    merged_data["6M_Cumulative_Risk_Free_Rate"],
     label="Risk-Free Returns",
     linestyle="-.",
     linewidth=1.5
