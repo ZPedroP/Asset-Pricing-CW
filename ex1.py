@@ -68,13 +68,6 @@ risk_free_data = risk_free_data.dropna()
 risk_free_data.reset_index(drop=True, inplace=True)
 risk_free_data['Date'] = ftse_data['Date']
 
-#### UNTIL HERE EVERYTHING IS WELL COMPUTED
-
-
-
-print("Hello World!")
-
-
 
 """ --- 3. Merge Datasets --- """
 
@@ -83,6 +76,8 @@ merged_data = pd.merge(ftse_data, risk_free_data, on="Date", how="inner")
 
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
+
+print(list(merged_data['Target']))
 
 
 """ --- 4. Define Features and Models --- """
@@ -142,31 +137,6 @@ param_grids = {
 		"alpha": [0.0001, 0.001, 0.01]
 	}
 }
-
-
-def monthly_investment_decision(predictions, dates):
-	"""
-	Aggregate daily predictions into monthly decisions.
-
-	Parameters:
-	- predictions: Array of daily predictions (1 for invest, 0 for don't invest).
-	- dates: Array of corresponding dates.
-
-	Returns:
-	- monthly_decisions: List of monthly decisions (1 for invest, 0 for don't invest).
-	"""
-	monthly_decisions = []
-	monthly_data = pd.DataFrame({"Date": dates, "Prediction": predictions})
-	monthly_data["Month"] = monthly_data["Date"].dt.to_period("M")  # Extract year-month
-
-	grouped = monthly_data.groupby("Month")
-
-	for month, group in grouped:
-		# Majority rule: invest if more than 50% predictions are 1
-		decision = 1 if group["Prediction"].mean() > 0.5 else 0
-		monthly_decisions.append({"Month": month, "Decision": "Invest" if decision == 1 else "Don't Invest"})
-
-	return monthly_decisions
 
 
 def calculate_sharpe_ratio(returns, risk_free_rate):
@@ -257,14 +227,20 @@ for name, model in models.items():
 		"Sharpe Ratio": sharpe_ratio
 	})
 	logging.info(f"Finished training {name} with Sharpe Ratio: {sharpe_ratio:.2f}")
-	
-	'''
-	# Generate and print monthly investment decisions
-	monthly_decisions = monthly_investment_decision(predictions, merged_data["Date"])
-	print(f"\nMonthly Investment Decisions ({name}):")
+
+	monthly_decisions = []
+
+	# Generate a list of dictionaries with months and decisions
+	monthly_decisions = [
+		{"Month": month.to_period("M"), "Decision": "Invest" if decision == 1 else "Don't Invest"}
+		for month, decision in zip(merged_data['Date'], predictions)
+	]
+
+	# Print the monthly decisions
 	for decision in monthly_decisions:
 		print(f"{decision['Month']}: {decision['Decision']}")
-	'''
+
+
 # Create and display performance summary
 performance_df = pd.DataFrame(performance_metrics)
 logging.info("\nModel Performance Summary:\n")
@@ -319,16 +295,24 @@ performance_metrics.append({
 })
 logging.info(f"Stacking Ensemble: Accuracy={accuracy_stack:.2f}, Precision={precision_stack:.2f}, Recall={recall_stack:.2f}, F1-Score={f1_stack:.2f}, Sharpe Ratio={sharpe_stack:.2f}")
 
-'''
 # Generate monthly investment decisions for Stacking Ensemble
 stacking_predictions = stacking_clf.predict(X)
-monthly_decisions_stack = monthly_investment_decision(stacking_predictions, merged_data["Date"])
+
+monthly_decisions_stacking_strategy = []
+
+# Generate a list of dictionaries with months and decisions
+monthly_decisions_stacking_strategy = [
+	{"Month": month.to_period("M"), "Decision": "Invest" if decision == 1 else "Don't Invest"}
+	for month, decision in zip(merged_data['Date'], stacking_predictions)
+]
 
 # Print monthly investment decisions for stacking ensemble
 print("\nMonthly Investment Decisions (Stacking Ensemble):")
-for decision in monthly_decisions_stack:
+for decision in monthly_decisions_stacking_strategy:
 	print(f"{decision['Month']}: {decision['Decision']}")
-'''
+
+#### UNTIL HERE EVERYTHING IS WELL COMPUTED
+
 
 """ --- 6. Calculate Strategy Returns --- """
 
