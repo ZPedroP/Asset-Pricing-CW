@@ -1,3 +1,4 @@
+import os
 import logging
 import pandas as pd
 import numpy as np
@@ -38,7 +39,12 @@ ftse_data.reset_index(drop=True, inplace=True)
 """ --- 2. Load Risk-Free Rate Data --- """
 
 # Load and clean risk-free rate data from the Excel file
-file_path = "/Users/santos/Desktop/ap_coursework/cw2024AP.xlsx"
+# Get the directory of the current script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Define the relative path to the Excel file
+file_path = os.path.join(script_dir, "cw2024AP.xlsx")
+
 risk_free_data = pd.read_excel(file_path, sheet_name="Sheet1", skiprows=3)
 risk_free_data = risk_free_data[["Unnamed: 0", "Risk Free Asset"]]
 risk_free_data.columns = ["Date", "Risk_Free_Asset"]
