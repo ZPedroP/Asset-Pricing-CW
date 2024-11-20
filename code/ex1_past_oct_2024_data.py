@@ -1,5 +1,6 @@
 # TODO: Consider updating this model to get only the predictions after the 6 months instead of a predictions every month based on a 6 month rolling window.
 # TODO: Fix the dates so they are consistent with what is requested in the coursework.
+# TODO: Does it make sense to compute log returns on the returns of the models?
 
 import os
 import logging

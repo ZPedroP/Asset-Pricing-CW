@@ -9,7 +9,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import precision_score, recall_score, f1_score
@@ -60,23 +59,12 @@ risk_free_data = risk_free_data[(risk_free_data["Date"] >= start_date) & (risk_f
 risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
 
 # Calculate 6-month cumulative risk-free rate
-#risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-#    (1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).apply(np.prod, raw=True) - 1
-#)
-
 risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
     np.log(1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).sum()
 )
 
-print(len(risk_free_data['Date']))
-print(len(ftse_data['Date']))
-
-#risk_free_data = risk_free_data.dropna()
 risk_free_data.reset_index(drop=True, inplace=True)
 risk_free_data['Date'] = ftse_data['Date']
-
-print(len(ftse_data['Date']))
-print(len(risk_free_data['Date']))
 
 
 """ --- 3. Merge Datasets --- """
@@ -86,13 +74,8 @@ merged_data = pd.merge(ftse_data, risk_free_data, on="Date", how="inner")
 merged_data = merged_data.dropna()
 merged_data.reset_index(drop=True, inplace=True)
 
-print(len(merged_data))
-
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
-
-print(merged_data)
-print(list(merged_data['Target']))
 
 
 """ --- 4. Define Features and Models --- """
@@ -105,32 +88,6 @@ train_data = merged_data[merged_data['Date'] <= train_cutoff_date]
 test_data = merged_data[merged_data['Date'] >= test_start_date]
 X_train, y_train = train_data[features], train_data["Target"]
 X_test, y_test = test_data[features], test_data["Target"]
-
-'''
-# Remove the first 6 elements
-X_train = X_train.iloc[6:]
-y_train = y_train.iloc[6:]
-X_test = X_test.iloc[6:]
-y_test = y_test.iloc[6:]
-
-# Reset index for consistency (optional)
-X_train.reset_index(drop=True, inplace=True)
-y_train.reset_index(drop=True, inplace=True)
-X_test.reset_index(drop=True, inplace=True)
-y_test.reset_index(drop=True, inplace=True)
-'''
-print("X_train with Dates")
-print(pd.concat([train_data['Date'], X_train], axis=1))
-
-print("y_train with Dates")
-print(pd.concat([train_data['Date'], y_train], axis=1))
-
-print("X_test with Dates")
-print(pd.concat([test_data['Date'], X_test], axis=1))
-
-print("y_test with Dates")
-print(pd.concat([test_data['Date'], y_test], axis=1))
-
 
 # Define machine learning models
 models = {
@@ -179,7 +136,6 @@ param_grids = {
 		"alpha": [0.0001, 0.001, 0.01]
 	}
 }
-
 
 def calculate_sharpe_ratio(returns, risk_free_rate):
 	"""
@@ -292,7 +248,6 @@ logging.info(performance_df)
 top_3_models = performance_df.sort_values(by="Sharpe Ratio", ascending=False).head(3)["Model"].tolist()
 logging.info(f"Top 3 models selected for stacking: {top_3_models}")
 
-
 # Define base models for stacking
 stacking_estimators = [(name, results[name]["model"]) for name in top_3_models]
 
@@ -353,23 +308,8 @@ print("\nMonthly Investment Decisions (Stacking Ensemble):")
 for decision in monthly_decisions_stacking_strategy:
 	print(f"{decision['Month']}: {decision['Decision']}")
 
-#### UNTIL HERE EVERYTHING IS WELL COMPUTED
-
 
 """ --- 6. Calculate Strategy Returns --- """
-'''
-# Initialize cumulative returns for each model
-for name, result in results.items():
-	test_data[f"{name}_Strategy_Return"] = np.where(
-		result["predictions"] == 1,
-		test_data["6M_Return"],
-		test_data["6M_Cumulative_Risk_Free_Rate"]
-	)
-	test_data[f"{name}_Cumulative"] = test_data[f"{name}_Strategy_Return"]
-
-# Add stacking strategy returns to test_data
-test_data["Stacking_Strategy_Return"] = stacking_strategy_returns
-'''
 
 # Update strategy returns using logarithmic values
 for name, result in results.items():
@@ -378,7 +318,7 @@ for name, result in results.items():
         test_data["6M_Return"],  # Logarithmic returns
         test_data["6M_Cumulative_Risk_Free_Rate"]  # Logarithmic risk-free rate
     )
-    
+
     # Calculate cumulative returns using summation for log returns
     test_data[f"{name}_Cumulative"] = (
         test_data[f"{name}_Strategy_Return"].cumsum()
@@ -389,7 +329,7 @@ for name, result in results.items():
 # Stacking Strategy cumulative returns
 test_data["Stacking_Strategy_Return"] = stacking_strategy_returns  # Ensure it's log-based
 test_data["Stacking_Cumulative"] = test_data["Stacking_Strategy_Return"].cumsum()
-#test_data["Stacking_Cumulative"] = np.exp(test_data["Stacking_Cumulative_Log"]) - 1
+
 
 """ --- 7. Plot Results --- """
 
