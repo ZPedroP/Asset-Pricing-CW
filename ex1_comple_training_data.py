@@ -60,23 +60,38 @@ risk_free_data = risk_free_data[(risk_free_data["Date"] >= start_date) & (risk_f
 risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
 
 # Calculate 6-month cumulative risk-free rate
+#risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
+#    (1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).apply(np.prod, raw=True) - 1
+#)
+
 risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-    (1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).apply(np.prod, raw=True) - 1
+    np.log(1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).sum()
 )
 
-risk_free_data = risk_free_data.dropna()
+print(len(risk_free_data['Date']))
+print(len(ftse_data['Date']))
+
+#risk_free_data = risk_free_data.dropna()
 risk_free_data.reset_index(drop=True, inplace=True)
 risk_free_data['Date'] = ftse_data['Date']
+
+print(len(ftse_data['Date']))
+print(len(risk_free_data['Date']))
 
 
 """ --- 3. Merge Datasets --- """
 
 # Merge FTSE data with risk-free data
 merged_data = pd.merge(ftse_data, risk_free_data, on="Date", how="inner")
+merged_data = merged_data.dropna()
+merged_data.reset_index(drop=True, inplace=True)
+
+print(len(merged_data))
 
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
 
+print(merged_data)
 print(list(merged_data['Target']))
 
 
@@ -84,12 +99,38 @@ print(list(merged_data['Target']))
 
 # Define features and target
 features = ["Volatility", "Momentum", "Moving_Avg", "6M_Cumulative_Risk_Free_Rate"]
-train_cutoff_date = "2024-11-30"
-test_start_date = "2024-12-01"
+train_cutoff_date = "2014-11-30"
+test_start_date = "2014-12-01"
 train_data = merged_data[merged_data['Date'] <= train_cutoff_date]
 test_data = merged_data[merged_data['Date'] >= test_start_date]
 X_train, y_train = train_data[features], train_data["Target"]
 X_test, y_test = test_data[features], test_data["Target"]
+
+'''
+# Remove the first 6 elements
+X_train = X_train.iloc[6:]
+y_train = y_train.iloc[6:]
+X_test = X_test.iloc[6:]
+y_test = y_test.iloc[6:]
+
+# Reset index for consistency (optional)
+X_train.reset_index(drop=True, inplace=True)
+y_train.reset_index(drop=True, inplace=True)
+X_test.reset_index(drop=True, inplace=True)
+y_test.reset_index(drop=True, inplace=True)
+'''
+print("X_train with Dates")
+print(pd.concat([train_data['Date'], X_train], axis=1))
+
+print("y_train with Dates")
+print(pd.concat([train_data['Date'], y_train], axis=1))
+
+print("X_test with Dates")
+print(pd.concat([test_data['Date'], X_test], axis=1))
+
+print("y_test with Dates")
+print(pd.concat([test_data['Date'], y_test], axis=1))
+
 
 # Define machine learning models
 models = {
@@ -198,12 +239,12 @@ for name, model in models.items():
 	# Calculate strategy returns based on predictions
 	strategy_returns = np.where(
 		best_model.predict(X_test) == 1,
-		merged_data["6M_Return"],
-		merged_data["6M_Cumulative_Risk_Free_Rate"]
+		test_data["6M_Return"],
+		test_data["6M_Cumulative_Risk_Free_Rate"]
 	)
 
 	# Calculate Sharpe Ratio
-	sharpe_ratio = calculate_sharpe_ratio(strategy_returns, merged_data["6M_Cumulative_Risk_Free_Rate"])
+	sharpe_ratio = calculate_sharpe_ratio(strategy_returns, test_data["6M_Cumulative_Risk_Free_Rate"])
 	
 	predictions = best_model.predict(X_test)
 	# Store results
@@ -234,7 +275,7 @@ for name, model in models.items():
 	# Generate a list of dictionaries with months and decisions
 	monthly_decisions = [
 		{"Month": month.to_period("M"), "Decision": "Invest" if decision == 1 else "Don't Invest"}
-		for month, decision in zip(merged_data['Date'], predictions)
+		for month, decision in zip(test_data['Date'], predictions)
 	]
 
 	# Print the monthly decisions
@@ -278,12 +319,12 @@ f1_stack = f1_score(y_test, y_pred_stack)
 # Calculate strategy returns for Stacking Ensemble
 stacking_strategy_returns = np.where(
 	stacking_clf.predict(X_test) == 1,
-	merged_data["6M_Return"],
-	merged_data["6M_Cumulative_Risk_Free_Rate"]
+	test_data["6M_Return"],
+	test_data["6M_Cumulative_Risk_Free_Rate"]
 )
 
 # Calculate Sharpe Ratio for Stacking Ensemble
-sharpe_stack = calculate_sharpe_ratio(stacking_strategy_returns, merged_data["6M_Cumulative_Risk_Free_Rate"])
+sharpe_stack = calculate_sharpe_ratio(stacking_strategy_returns, test_data["6M_Cumulative_Risk_Free_Rate"])
 
 # Add Stacking Ensemble results to performance metrics
 performance_metrics.append({
@@ -304,7 +345,7 @@ monthly_decisions_stacking_strategy = []
 # Generate a list of dictionaries with months and decisions
 monthly_decisions_stacking_strategy = [
 	{"Month": month.to_period("M"), "Decision": "Invest" if decision == 1 else "Don't Invest"}
-	for month, decision in zip(merged_data['Date'], stacking_predictions)
+	for month, decision in zip(test_data['Date'], stacking_predictions)
 ]
 
 # Print monthly investment decisions for stacking ensemble
@@ -316,19 +357,39 @@ for decision in monthly_decisions_stacking_strategy:
 
 
 """ --- 6. Calculate Strategy Returns --- """
-
+'''
 # Initialize cumulative returns for each model
 for name, result in results.items():
-	merged_data[f"{name}_Strategy_Return"] = np.where(
+	test_data[f"{name}_Strategy_Return"] = np.where(
 		result["predictions"] == 1,
-		merged_data["6M_Return"],
-		merged_data["6M_Cumulative_Risk_Free_Rate"]
+		test_data["6M_Return"],
+		test_data["6M_Cumulative_Risk_Free_Rate"]
 	)
-	merged_data[f"{name}_Cumulative"] = merged_data[f"{name}_Strategy_Return"]
+	test_data[f"{name}_Cumulative"] = test_data[f"{name}_Strategy_Return"]
 
-# Add stacking strategy returns to merged_data
-merged_data["Stacking_Strategy_Return"] = stacking_strategy_returns
+# Add stacking strategy returns to test_data
+test_data["Stacking_Strategy_Return"] = stacking_strategy_returns
+'''
 
+# Update strategy returns using logarithmic values
+for name, result in results.items():
+    test_data[f"{name}_Strategy_Return"] = np.where(
+        result["predictions"] == 1,
+        test_data["6M_Return"],  # Logarithmic returns
+        test_data["6M_Cumulative_Risk_Free_Rate"]  # Logarithmic risk-free rate
+    )
+    
+    # Calculate cumulative returns using summation for log returns
+    test_data[f"{name}_Cumulative"] = (
+        test_data[f"{name}_Strategy_Return"].cumsum()
+    )
+    # Exponentiate for plotting if necessary
+    #test_data[f"{name}_Cumulative"] = np.exp(test_data[f"{name}_Cumulative"]) - 1
+
+# Stacking Strategy cumulative returns
+test_data["Stacking_Strategy_Return"] = stacking_strategy_returns  # Ensure it's log-based
+test_data["Stacking_Cumulative"] = test_data["Stacking_Strategy_Return"].cumsum()
+#test_data["Stacking_Cumulative"] = np.exp(test_data["Stacking_Cumulative_Log"]) - 1
 
 """ --- 7. Plot Results --- """
 
@@ -337,21 +398,21 @@ plt.figure(figsize=(14, 8))
 
 for name in results.keys():
 	plt.plot(
-		merged_data["Date"],
-		merged_data[f"{name}_Cumulative"],
+		test_data["Date"],
+		test_data[f"{name}_Cumulative"],
 		label=f"{name} Strategy"
 	)
 
 # Plot Stacking Ensemble results
 plt.plot(
-	merged_data["Date"],
-	merged_data["Stacking_Strategy_Return"],
+	test_data["Date"],
+	test_data["Stacking_Cumulative"],
 	label="Stacking Ensemble Strategy",
 )
 
 plt.plot(
-	merged_data["Date"],
-	merged_data["6M_Return"],
+	test_data["Date"],
+	test_data["6M_Return"],
 	label="Market Returns",
 	linewidth=2,
 	linestyle="--"
@@ -359,8 +420,8 @@ plt.plot(
 
 # Plot Risk-Free cumulative returns
 plt.plot(
-    merged_data["Date"],
-    merged_data["6M_Cumulative_Risk_Free_Rate"],
+    test_data["Date"],
+    test_data["6M_Cumulative_Risk_Free_Rate"],
     label="Risk-Free Returns",
     linestyle="-.",
     linewidth=1.5

@@ -1,3 +1,6 @@
+# TODO: Consider updating this model to get only the predictions after the 6 months instead of a predictions every month based on a 6 month rolling window.
+# TODO: Fix the dates so they are consistent with what is requested in the coursework.
+
 import os
 import logging
 import pandas as pd
@@ -60,11 +63,15 @@ risk_free_data = risk_free_data[(risk_free_data["Date"] >= start_date) & (risk_f
 risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
 
 # Calculate 6-month cumulative risk-free rate
+#risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
+#    (1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).apply(np.prod, raw=True) - 1
+#)
+
 risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-    (1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).apply(np.prod, raw=True) - 1
+    np.log(1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).sum()
 )
 
-risk_free_data = risk_free_data.dropna()
+#risk_free_data = risk_free_data.dropna()
 risk_free_data.reset_index(drop=True, inplace=True)
 risk_free_data['Date'] = ftse_data['Date']
 
@@ -73,6 +80,8 @@ risk_free_data['Date'] = ftse_data['Date']
 
 # Merge FTSE data with risk-free data
 merged_data = pd.merge(ftse_data, risk_free_data, on="Date", how="inner")
+merged_data = merged_data.dropna()
+merged_data.reset_index(drop=True, inplace=True)
 
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
@@ -323,10 +332,15 @@ for name, result in results.items():
 		merged_data["6M_Return"],
 		merged_data["6M_Cumulative_Risk_Free_Rate"]
 	)
-	merged_data[f"{name}_Cumulative"] = merged_data[f"{name}_Strategy_Return"]
+	#merged_data[f"{name}_Cumulative"] = merged_data[f"{name}_Strategy_Return"]
+	# Calculate cumulative returns using summation for log returns
+	merged_data[f"{name}_Cumulative"] = (
+		merged_data[f"{name}_Strategy_Return"].cumsum()
+	)
 
 # Add stacking strategy returns to merged_data
 merged_data["Stacking_Strategy_Return"] = stacking_strategy_returns
+merged_data["Stacking_Cumulative"] = merged_data["Stacking_Strategy_Return"].cumsum()
 
 
 """ --- 7. Plot Results --- """
@@ -344,7 +358,7 @@ for name in results.keys():
 # Plot Stacking Ensemble results
 plt.plot(
 	merged_data["Date"],
-	merged_data["Stacking_Strategy_Return"],
+	merged_data["Stacking_Cumulative"],
 	label="Stacking Ensemble Strategy",
 )
 
