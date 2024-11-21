@@ -23,48 +23,38 @@ ftse_data = yf.download(ftse_ticker, start="1995-12-31", end="2024-11-30", inter
 
 # Add derived features
 ftse_data['Date'] = ftse_data.index
-ftse_data['Return'] = np.log(ftse_data['Adj Close'] / ftse_data['Adj Close'].shift(1))
+ftse_data['Return'] = (ftse_data['Adj Close'] / ftse_data['Adj Close'].shift(1)) - 1  # Linear return
 ftse_data['6M_Return'] = ftse_data['Return'].rolling(window=6).sum()
 ftse_data['Volatility'] = ftse_data['Return'].rolling(6).std()
 ftse_data['Moving_Avg'] = ftse_data['Return'].rolling(6).mean()
-# Define momentum as the difference between recent log return and its moving average
 ftse_data['Momentum'] = ftse_data['Return'] - ftse_data['Moving_Avg']
 
-# Keep only data after 2024-12-01
+# Filter dates
 ftse_data = ftse_data[(ftse_data['Date'] >= '1995-12-31') & (ftse_data['Date'] <= '2024-11-30')]
 ftse_data.reset_index(drop=True, inplace=True)
 
 
 """ --- 2. Load Risk-Free Rate Data --- """
 
-# Load and clean risk-free rate data from the Excel file
-# Get the directory of the current script
+# Load risk-free rate data
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Define the relative path to the Excel file
 file_path = os.path.join(script_dir, "cw2024AP.xlsx")
-
 risk_free_data = pd.read_excel(file_path, sheet_name="Sheet1", skiprows=3)
 risk_free_data = risk_free_data[["Unnamed: 0", "Risk Free Asset"]]
 risk_free_data.columns = ["Date", "Risk_Free_Asset"]
 risk_free_data["Date"] = pd.to_datetime(risk_free_data["Date"], errors="coerce")
 risk_free_data["Risk_Free_Asset"] = pd.to_numeric(risk_free_data["Risk_Free_Asset"], errors="coerce")
 
-# Define the start and end dates
+# Filter dates and calculate annualized rate
 start_date = "1995-12-31"
 end_date = "2024-10-31"
-
-# Filter the risk-free rate data for the specified period
 risk_free_data = risk_free_data[(risk_free_data["Date"] >= start_date) & (risk_free_data["Date"] <= end_date)]
 risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
 
-# Calculate 6-month cumulative risk-free rate
-#risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-#    np.log(1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).sum()
-#)
-risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-    np.log(1 + 6 * risk_free_data["Risk_Free_Rate"])
-)
+# Calculate 6-month cumulative risk-free rate (cumulative)
+risk_free_data["6M_Cumulative_Risk_Free_Rate"] = risk_free_data["Risk_Free_Rate"] / 2
+print(ftse_data['6M_Return'])
+print(risk_free_data["6M_Cumulative_Risk_Free_Rate"])
 
 risk_free_data.reset_index(drop=True, inplace=True)
 risk_free_data['Date'] = ftse_data['Date']
@@ -79,14 +69,16 @@ merged_data.reset_index(drop=True, inplace=True)
 
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
+print(list(merged_data["Target"]).count(1))
+print(list(merged_data["Target"]).count(0))
 
 
 """ --- 4. Define Features and Models --- """
 
 # Define features and target
 features = ["Volatility", "Momentum", "Moving_Avg"]
-train_cutoff_date = "2014-11-30"
-test_start_date = "2014-12-01"
+train_cutoff_date = "2014-10-31"
+test_start_date = "2014-11-01"
 train_data = merged_data[merged_data['Date'] <= train_cutoff_date]
 test_data = merged_data[merged_data['Date'] >= test_start_date]
 X_train, y_train = train_data[features], train_data["Target"]
@@ -99,7 +91,7 @@ models = {
 	"Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
 	"SVM": SVC(probability=True, random_state=42),
 	"k-NN": KNeighborsClassifier(),
-	"Neural Network": MLPClassifier(max_iter=1000, random_state=42),
+	"Neural Network": MLPClassifier(max_iter=2500, random_state=42),
 }
 
 # Define hyperparameter grids for each model
@@ -314,24 +306,92 @@ for decision in monthly_decisions_stacking_strategy:
 
 """ --- 6. Calculate Strategy Returns --- """
 
-# Update strategy returns using logarithmic values
 for name, result in results.items():
-    test_data[f"{name}_Strategy_Return"] = np.where(
-        result["predictions"] == 1,
-        test_data["6M_Return"],  # Logarithmic returns
-        test_data["6M_Cumulative_Risk_Free_Rate"]  # Logarithmic risk-free rate
-    )
+    # Compute strategy returns on a 6-month compounded basis
+	test_data[f"{name}_6M_Return"] = np.where(
+		result["predictions"] == 1,
+		test_data["6M_Return"],  # Use 6M market compounded return
+		test_data["6M_Cumulative_Risk_Free_Rate"]  # Use 6M risk-free compounded return
+	)
 
-    # Calculate cumulative returns using summation for log returns
-    test_data[f"{name}_Cumulative"] = (
-        test_data[f"{name}_Strategy_Return"].cumsum()
-    )
+	# Compute cumulative performance over time
+	test_data[f"{name}_Cumulative_Return"] = test_data[f"{name}_6M_Return"].cumsum()
     # Exponentiate for plotting if necessary
     #test_data[f"{name}_Cumulative"] = np.exp(test_data[f"{name}_Cumulative"]) - 1
 
+# Calculate log returns for each model
+for name, result in results.items():
+    # Compute strategy log returns
+    test_data[f"{name}_Log_Return"] = np.where(
+        result["predictions"] == 1,
+        np.log1p(test_data["6M_Return"]),  # Use log(1 + 6M market return)
+        np.log1p(test_data["6M_Cumulative_Risk_Free_Rate"])  # Use log(1 + 6M risk-free return)
+    )
+
+    # Compute cumulative log returns
+    test_data[f"{name}_Cumulative_Log_Return"] = test_data[f"{name}_Log_Return"].cumsum()
+
 # Stacking Strategy cumulative returns
 test_data["Stacking_Strategy_Return"] = stacking_strategy_returns  # Ensure it's log-based
-test_data["Stacking_Cumulative"] = test_data["Stacking_Strategy_Return"].cumsum()
+# Compute cumulative performance for the stacking strategy
+test_data["Stacking_Cumulative_Return"] = test_data["Stacking_Strategy_Return"].cumsum()
+
+# Calculate log returns for Stacking Strategy
+test_data["Stacking_Log_Return"] = np.where(
+    stacking_predictions == 1,
+    np.log1p(test_data["6M_Return"]),  # Use log(1 + 6M market return)
+    np.log1p(test_data["6M_Cumulative_Risk_Free_Rate"])  # Use log(1 + 6M risk-free return)
+)
+# Compute cumulative log returns for the stacking strategy
+test_data["Stacking_Cumulative_Log_Return"] = test_data["Stacking_Log_Return"].cumsum()
+
+# Assuming 'test_data' is your DataFrame containing the necessary columns
+# Ensure that 'test_data' includes the predictions and is already processed
+
+# Filter rows for every 6 months from the first month
+six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
+print(six_months_intervals)
+# Select relevant columns for the table
+#random_forest_predictions_table = six_months_intervals[["Date", "", "6M_Return"]]
+
+# Assuming 'results' dictionary contains predictions for each model
+# Replace "Random Forest" with the name of the model you want predictions for
+model_name = "Random Forest"
+
+# Add predictions to the test_data DataFrame for analysis or storage
+test_data[f"{model_name}_Predictions"] = results[model_name]["predictions"]
+six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
+
+# View the predictions in the test_data DataFrame
+print(six_months_intervals[["Date", f"{model_name}_Predictions"]])
+
+
+# Set the model name for the Stacking Ensemble
+model_name = "Stacking Ensemble"
+
+# Add Stacking Ensemble predictions to the test_data DataFrame for analysis or storage
+test_data[f"{model_name}_Predictions"] = stacking_predictions
+
+# Filter rows for every 6 months from the first month
+six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
+
+# View the predictions in the test_data DataFrame
+print(six_months_intervals[["Date", f"{model_name}_Predictions"]])
+
+# Define the file path for saving predictions
+output_dir = script_dir
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+output_file = os.path.join(output_dir, "stacking_ensemble_predictions.xlsx")
+
+# Convert the Date column to a string format explicitly before saving
+six_months_intervals["Date"] = six_months_intervals["Date"].dt.strftime("%Y-%m-%d")
+
+# Save the filtered DataFrame with Stacking Ensemble predictions to an Excel file
+six_months_intervals[["Date", f"{model_name}_Predictions"]].to_excel(output_file, index=False)
+
+print(f"Stacking Ensemble predictions saved to {output_file}")
 
 
 """ --- 7. Plot Results --- """
@@ -342,30 +402,31 @@ plt.figure(figsize=(14, 8))
 for name in results.keys():
 	plt.plot(
 		test_data["Date"],
-		test_data[f"{name}_Cumulative"],
+		test_data[f"{name}_Cumulative_Return"],
 		label=f"{name} Strategy"
 	)
 
 # Plot Stacking Ensemble results
 plt.plot(
 	test_data["Date"],
-	test_data["Stacking_Cumulative"],
+	test_data["Stacking_Cumulative_Return"],
 	label="Stacking Ensemble Strategy",
 )
 
-plt.plot(
-	test_data["Date"],
-	test_data["6M_Return"],
-	label="Market Returns",
-	linewidth=2,
-	linestyle="--"
-)
-
-# Plot Risk-Free cumulative returns
+# Plot cumulative market returns (6M Cumulative)
 plt.plot(
     test_data["Date"],
-    test_data["6M_Cumulative_Risk_Free_Rate"],
-    label="Risk-Free Returns",
+    test_data["6M_Return"].cumsum(),
+    label="Market Returns (6M Cumulative)",
+    linestyle="--",
+    linewidth=2
+)
+
+# Plot cumulative risk-free returns (6M Cumulative)
+plt.plot(
+    test_data["Date"],
+    test_data["6M_Cumulative_Risk_Free_Rate"].cumsum(),
+    label="Risk-Free Returns (6M Cumulative)",
     linestyle="-.",
     linewidth=1.5
 )
@@ -374,5 +435,54 @@ plt.legend()
 plt.title("Cumulative Returns of Different Models")
 plt.xlabel("Date")
 plt.ylabel("Cumulative Return")
+plt.grid()
+plt.show()
+
+
+# Plot cumulative log returns of all models and the market
+plt.figure(figsize=(14, 8))
+
+for name in results.keys():
+    plt.plot(
+        test_data["Date"],
+        test_data[f"{name}_Cumulative_Log_Return"],
+        label=f"{name} Strategy (Log Returns)"
+    )
+
+# Plot Stacking Ensemble results
+plt.plot(
+    test_data["Date"],
+    test_data["Stacking_Cumulative_Log_Return"],
+    label="Stacking Ensemble Strategy (Log Returns)",
+)
+
+# Plot cumulative log market returns
+test_data["Market_Log_Return"] = np.log1p(test_data["6M_Return"])
+test_data["Market_Cumulative_Log_Return"] = test_data["Market_Log_Return"].cumsum()
+
+plt.plot(
+    test_data["Date"],
+    test_data["Market_Cumulative_Log_Return"],
+    label="Market Returns (Log Returns)",
+    linestyle="--",
+    linewidth=2
+)
+
+# Plot cumulative log risk-free returns
+test_data["Risk_Free_Log_Return"] = np.log1p(test_data["6M_Cumulative_Risk_Free_Rate"])
+test_data["Risk_Free_Cumulative_Log_Return"] = test_data["Risk_Free_Log_Return"].cumsum()
+
+plt.plot(
+    test_data["Date"],
+    test_data["Risk_Free_Cumulative_Log_Return"],
+    label="Risk-Free Returns (Log Returns)",
+    linestyle="-.",
+    linewidth=1.5
+)
+
+plt.legend()
+plt.title("Cumulative Log Returns of Different Models")
+plt.xlabel("Date")
+plt.ylabel("Cumulative Log Return")
 plt.grid()
 plt.show()

@@ -23,12 +23,21 @@ ftse_data = yf.download(ftse_ticker, start="1995-12-31", end="2024-11-30", inter
 
 # Add derived features
 ftse_data['Date'] = ftse_data.index
-ftse_data['Return'] = np.log(ftse_data['Adj Close'] / ftse_data['Adj Close'].shift(1))
-ftse_data['6M_Return'] = ftse_data['Return'].rolling(window=6).sum()
-ftse_data['Volatility'] = ftse_data['Return'].rolling(6).std()
-ftse_data['Moving_Avg'] = ftse_data['Return'].rolling(6).mean()
-# Define momentum as the difference between recent log return and its moving average
-ftse_data['Momentum'] = ftse_data['Return'] - ftse_data['Moving_Avg']
+# Calculate monthly returns for the index
+ftse_data['Return'] = ftse_data['Adj Close'].pct_change()  # Percentage change
+print(ftse_data['Return'])
+# Compute 6-month cumulative returns (lagged to avoid data leakage)
+ftse_data['6M_Return'] = ftse_data['Adj Close'] / ftse_data['Adj Close'].shift(6) - 1
+print(ftse_data['6M_Return'])
+# Compute the 6-month momentum
+ftse_data['Momentum'] = ftse_data['Adj Close'] - ftse_data['Adj Close'].shift(6) - 1
+
+# Feature Engineering
+ftse_data['Volatility'] = ftse_data['Adj Close'].rolling(6).std()  # 6-month rolling volatility
+ftse_data['Moving_Avg'] = ftse_data['Adj Close'].rolling(6).mean()  # 6-month rolling average
+ftse_data['RSI'] = 100 - (100 / (1 + ftse_data['Adj Close'].rolling(6).apply(
+    lambda x: (x[x > 0].sum() / -x[x < 0].sum()) if x[x < 0].sum() != 0 else np.nan
+)))
 
 # Keep only data after 2024-12-01
 ftse_data = ftse_data[(ftse_data['Date'] >= '1995-12-31') & (ftse_data['Date'] <= '2024-11-30')]
@@ -59,12 +68,8 @@ risk_free_data = risk_free_data[(risk_free_data["Date"] >= start_date) & (risk_f
 risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
 
 # Calculate 6-month cumulative risk-free rate
-#risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-#    np.log(1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).sum()
-#)
-risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-    np.log(1 + 6 * risk_free_data["Risk_Free_Rate"])
-)
+# Assign the first month's risk-free rate for each 6-month period
+risk_free_data["6M_Cumulative_Risk_Free_Rate"] = risk_free_data["Risk_Free_Rate"] / 2
 
 risk_free_data.reset_index(drop=True, inplace=True)
 risk_free_data['Date'] = ftse_data['Date']
@@ -77,14 +82,19 @@ merged_data = pd.merge(ftse_data, risk_free_data, on="Date", how="inner")
 merged_data = merged_data.dropna()
 merged_data.reset_index(drop=True, inplace=True)
 
+print("It should print something here!")
+print(merged_data["6M_Return"])
+print(merged_data["6M_Cumulative_Risk_Free_Rate"])
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
+print(list(merged_data).count(1))
+print(list(merged_data).count(0))
 
 
 """ --- 4. Define Features and Models --- """
 
 # Define features and target
-features = ["Volatility", "Momentum", "Moving_Avg"]
+features = ["Volatility", "Momentum", "Moving_Avg", "6M_Cumulative_Risk_Free_Rate"]
 train_cutoff_date = "2014-11-30"
 test_start_date = "2014-12-01"
 train_data = merged_data[merged_data['Date'] <= train_cutoff_date]
@@ -324,14 +334,14 @@ for name, result in results.items():
 
     # Calculate cumulative returns using summation for log returns
     test_data[f"{name}_Cumulative"] = (
-        test_data[f"{name}_Strategy_Return"].cumsum()
+        test_data[f"{name}_Strategy_Return"]#.cumsum()
     )
     # Exponentiate for plotting if necessary
     #test_data[f"{name}_Cumulative"] = np.exp(test_data[f"{name}_Cumulative"]) - 1
 
 # Stacking Strategy cumulative returns
 test_data["Stacking_Strategy_Return"] = stacking_strategy_returns  # Ensure it's log-based
-test_data["Stacking_Cumulative"] = test_data["Stacking_Strategy_Return"].cumsum()
+test_data["Stacking_Cumulative"] = test_data["Stacking_Strategy_Return"]#.cumsum()
 
 
 """ --- 7. Plot Results --- """
