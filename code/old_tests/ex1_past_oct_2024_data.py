@@ -1,7 +1,3 @@
-# TODO: Consider updating this model to get only the predictions after the 6 months instead of a predictions every month based on a 6 month rolling window.
-# TODO: Fix the dates so they are consistent with what is requested in the coursework.
-# TODO: Does it make sense to compute log returns on the returns of the models?
-
 import os
 import logging
 import pandas as pd
@@ -63,11 +59,6 @@ end_date = "2024-10-31"
 risk_free_data = risk_free_data[(risk_free_data["Date"] >= start_date) & (risk_free_data["Date"] <= end_date)]
 risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
 
-# Calculate 6-month cumulative risk-free rate
-#risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
-#    (1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).apply(np.prod, raw=True) - 1
-#)
-
 risk_free_data["6M_Cumulative_Risk_Free_Rate"] = (
     np.log(1 + risk_free_data["Risk_Free_Rate"]).rolling(window=6).sum()
 )
@@ -87,13 +78,11 @@ merged_data.reset_index(drop=True, inplace=True)
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
 
-print(list(merged_data['Target']))
-
 
 """ --- 4. Define Features and Models --- """
 
 # Define features and target
-features = ["Volatility", "Momentum", "Moving_Avg", "6M_Cumulative_Risk_Free_Rate"]
+features = ["Volatility", "Momentum", "Moving_Avg"]
 X = merged_data[features]
 y = merged_data["Target"]
 
@@ -321,8 +310,6 @@ print("\nMonthly Investment Decisions (Stacking Ensemble):")
 for decision in monthly_decisions_stacking_strategy:
 	print(f"{decision['Month']}: {decision['Decision']}")
 
-#### UNTIL HERE EVERYTHING IS WELL COMPUTED
-
 
 """ --- 6. Calculate Strategy Returns --- """
 
@@ -333,7 +320,7 @@ for name, result in results.items():
 		merged_data["6M_Return"],
 		merged_data["6M_Cumulative_Risk_Free_Rate"]
 	)
-	#merged_data[f"{name}_Cumulative"] = merged_data[f"{name}_Strategy_Return"]
+
 	# Calculate cumulative returns using summation for log returns
 	merged_data[f"{name}_Cumulative"] = (
 		merged_data[f"{name}_Strategy_Return"].cumsum()

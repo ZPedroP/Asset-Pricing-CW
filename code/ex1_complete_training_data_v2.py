@@ -1,3 +1,5 @@
+# TODO: Fix the dates so they are consistent with what is requested in the coursework.
+
 import os
 import logging
 import pandas as pd
