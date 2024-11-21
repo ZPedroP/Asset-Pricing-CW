@@ -55,8 +55,6 @@ risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
 
 # Calculate 6-month cumulative risk-free rate (cumulative)
 risk_free_data["6M_Cumulative_Risk_Free_Rate"] = risk_free_data["Risk_Free_Rate"] / 2
-print(ftse_data['6M_Return'])
-print(risk_free_data["6M_Cumulative_Risk_Free_Rate"])
 
 risk_free_data.reset_index(drop=True, inplace=True)
 risk_free_data['Date'] = ftse_data['Date']
@@ -71,8 +69,6 @@ merged_data.reset_index(drop=True, inplace=True)
 
 # Define target: 1 if market return > risk-free rate
 merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
-print(list(merged_data["Target"]).count(1))
-print(list(merged_data["Target"]).count(0))
 
 
 """ --- 4. Define Features and Models --- """
@@ -153,15 +149,11 @@ def calculate_sharpe_ratio(returns, risk_free_rate):
 
 """ --- 5. Train and Evaluate Models --- """
 
-# Set up logging to track progress
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 # Store results
 results = {}
 performance_metrics = []
 
 for name, model in models.items():
-	logging.info(f"Starting hyperparameter tuning for {name}...")
 
 	# Perform grid search for hyperparameter tuning
 	param_grid = param_grids[name]
@@ -174,13 +166,11 @@ for name, model in models.items():
 		verbose=1  # Verbose outputs progress of GridSearchCV
 	)
 
-	logging.info(f"Grid Search for {name} with parameters: {param_grid}")
 	grid_search.fit(X_train, y_train)
 
 	# Get the best model and its parameters
 	best_model = grid_search.best_estimator_
 	best_params = grid_search.best_params_
-	logging.info(f"Best parameters for {name}: {best_params}")
 
 	# Evaluate the best model
 	y_pred = best_model.predict(X_test)
@@ -221,7 +211,6 @@ for name, model in models.items():
 		"F1-Score": f1,
 		"Sharpe Ratio": sharpe_ratio
 	})
-	logging.info(f"Finished training {name} with Sharpe Ratio: {sharpe_ratio:.2f}")
 
 	monthly_decisions = []
 
@@ -238,12 +227,9 @@ for name, model in models.items():
 
 # Create and display performance summary
 performance_df = pd.DataFrame(performance_metrics)
-logging.info("\nModel Performance Summary:\n")
-logging.info(performance_df)
 
 # Sort models by Sharpe Ratio and select the top 3
 top_3_models = performance_df.sort_values(by="Sharpe Ratio", ascending=False).head(3)["Model"].tolist()
-logging.info(f"Top 3 models selected for stacking: {top_3_models}")
 
 # Define base models for stacking
 stacking_estimators = [(name, results[name]["model"]) for name in top_3_models]
@@ -287,7 +273,6 @@ performance_metrics.append({
 	"F1-Score": f1_stack,
 	"Sharpe Ratio": sharpe_stack
 })
-logging.info(f"Stacking Ensemble: Accuracy={accuracy_stack:.2f}, Precision={precision_stack:.2f}, Recall={recall_stack:.2f}, F1-Score={f1_stack:.2f}, Sharpe Ratio={sharpe_stack:.2f}")
 
 # Generate monthly investment decisions for Stacking Ensemble
 stacking_predictions = stacking_clf.predict(X_test)
@@ -318,8 +303,6 @@ for name, result in results.items():
 
 	# Compute cumulative performance over time
 	test_data[f"{name}_Cumulative_Return"] = test_data[f"{name}_6M_Return"].cumsum()
-    # Exponentiate for plotting if necessary
-    #test_data[f"{name}_Cumulative"] = np.exp(test_data[f"{name}_Cumulative"]) - 1
 
 # Calculate log returns for each model
 for name, result in results.items():
@@ -347,14 +330,8 @@ test_data["Stacking_Log_Return"] = np.where(
 # Compute cumulative log returns for the stacking strategy
 test_data["Stacking_Cumulative_Log_Return"] = test_data["Stacking_Log_Return"].cumsum()
 
-# Assuming 'test_data' is your DataFrame containing the necessary columns
-# Ensure that 'test_data' includes the predictions and is already processed
-
 # Filter rows for every 6 months from the first month
 six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
-print(six_months_intervals)
-# Select relevant columns for the table
-#random_forest_predictions_table = six_months_intervals[["Date", "", "6M_Return"]]
 
 # Assuming 'results' dictionary contains predictions for each model
 # Replace "Random Forest" with the name of the model you want predictions for
@@ -364,10 +341,6 @@ model_name = "Random Forest"
 test_data[f"{model_name}_Predictions"] = results[model_name]["predictions"]
 six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
 
-# View the predictions in the test_data DataFrame
-print(six_months_intervals[["Date", f"{model_name}_Predictions"]])
-
-
 # Set the model name for the Stacking Ensemble
 model_name = "Stacking Ensemble"
 
@@ -376,9 +349,6 @@ test_data[f"{model_name}_Predictions"] = stacking_predictions
 
 # Filter rows for every 6 months from the first month
 six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
-
-# View the predictions in the test_data DataFrame
-print(six_months_intervals[["Date", f"{model_name}_Predictions"]])
 
 # Define the file path for saving predictions
 output_dir = script_dir
