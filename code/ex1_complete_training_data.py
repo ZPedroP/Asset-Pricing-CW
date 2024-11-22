@@ -1,7 +1,6 @@
 # TODO: Fix the dates so they are consistent with what is requested in the coursework.
 
 import os
-import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
