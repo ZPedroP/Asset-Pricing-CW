@@ -1,5 +1,3 @@
-# TODO: Fix the dates so they are consistent with what is requested in the coursework.
-
 import os
 import pandas as pd
 import numpy as np
@@ -329,40 +327,37 @@ test_data["Stacking_Log_Return"] = np.where(
 # Compute cumulative log returns for the stacking strategy
 test_data["Stacking_Cumulative_Log_Return"] = test_data["Stacking_Log_Return"].cumsum()
 
-# Filter rows for every 6 months from the first month
-six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
-
 # Assuming 'results' dictionary contains predictions for each model
 # Replace "Random Forest" with the name of the model you want predictions for
-model_name = "Random Forest"
+for name, result in results.items():
+	test_data[f"{name}_Predictions"] = results[name]["predictions"]
 
-# Add predictions to the test_data DataFrame for analysis or storage
-test_data[f"{model_name}_Predictions"] = results[model_name]["predictions"]
-six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
-
-# Set the model name for the Stacking Ensemble
-model_name = "Stacking Ensemble"
-
-# Add Stacking Ensemble predictions to the test_data DataFrame for analysis or storage
-test_data[f"{model_name}_Predictions"] = stacking_predictions
-
+test_data["Stacking_Ensemble_Predictions"] = stacking_predictions
 # Filter rows for every 6 months from the first month
 six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
 
 # Define the file path for saving predictions
-output_dir = script_dir
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+if not os.path.exists(script_dir):
+    os.makedirs(script_dir)
 
-output_file = os.path.join(output_dir, "stacking_ensemble_predictions.xlsx")
+output_file = os.path.join(script_dir, "model_predictions.xlsx")
 
 # Convert the Date column to a string format explicitly before saving
 six_months_intervals["Date"] = six_months_intervals["Date"].dt.strftime("%Y-%m-%d")
 
-# Save the filtered DataFrame with Stacking Ensemble predictions to an Excel file
-six_months_intervals[["Date", f"{model_name}_Predictions"]].to_excel(output_file, index=False)
+# Create a DataFrame to hold predictions from all models
+predictions_df = six_months_intervals[["Date"]].copy()
 
-print(f"Stacking Ensemble predictions saved to {output_file}")
+# Add predictions from each model to the DataFrame
+for name in results.keys():
+    predictions_df[name] = six_months_intervals[f"{name}_Predictions"]
+
+predictions_df["Stacking Ensemble"] = six_months_intervals["Stacking_Ensemble_Predictions"]
+
+# Save the predictions DataFrame to an Excel file
+predictions_df.to_excel(output_file, index=False)
+
+print(f"Model Predictions saved to {output_file}")
 
 
 """ --- 7. Plot Results --- """
