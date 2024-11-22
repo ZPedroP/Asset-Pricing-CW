@@ -412,14 +412,14 @@ for name in results.keys():
     plt.plot(
         test_data["Date"],
         test_data[f"{name}_Cumulative_Log_Return"],
-        label=f"{name} Strategy (Log Returns)"
+        label=f"{name} Strategy"
     )
 
 # Plot Stacking Ensemble results
 plt.plot(
     test_data["Date"],
     test_data["Stacking_Cumulative_Log_Return"],
-    label="Stacking Ensemble Strategy (Log Returns)",
+    label="Stacking Ensemble Strategy",
 )
 
 # Plot cumulative log market returns
@@ -429,7 +429,7 @@ test_data["Market_Cumulative_Log_Return"] = test_data["Market_Log_Return"].cumsu
 plt.plot(
     test_data["Date"],
     test_data["Market_Cumulative_Log_Return"],
-    label="Market Returns (Log Returns)",
+    label="Market Returns",
     linestyle="--",
     linewidth=2
 )
@@ -441,14 +441,15 @@ test_data["Risk_Free_Cumulative_Log_Return"] = test_data["Risk_Free_Log_Return"]
 plt.plot(
     test_data["Date"],
     test_data["Risk_Free_Cumulative_Log_Return"],
-    label="Risk-Free Returns (Log Returns)",
+    label="Risk-Free Rate Returns",
     linestyle="-.",
     linewidth=1.5
 )
 
 plt.legend()
-plt.title("Cumulative Log Returns of Different Models")
+plt.title("Comparison between the Cumulative Log Returns of Different Market Prediction Models")
 plt.xlabel("Date")
-plt.ylabel("Cumulative Log Return")
+plt.ylabel("Cumulative Log Returns")
 plt.grid()
+plt.savefig('Figure_X.png', format='png', dpi=1200)
 plt.show()
