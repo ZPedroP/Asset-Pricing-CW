@@ -217,11 +217,6 @@ for name, model in models.items():
 		for month, decision in zip(test_data['Date'], predictions)
 	]
 
-	# Print the monthly decisions
-	for decision in monthly_decisions:
-		print(f"{decision['Month']}: {decision['Decision']}")
-
-
 # Create and display performance summary
 performance_df = pd.DataFrame(performance_metrics)
 
@@ -281,11 +276,6 @@ monthly_decisions_stacking_strategy = [
 	{"Month": month.to_period("M"), "Decision": "Invest" if decision == 1 else "Don't Invest"}
 	for month, decision in zip(test_data['Date'], stacking_predictions)
 ]
-
-# Print monthly investment decisions for stacking ensemble
-print("\nMonthly Investment Decisions (Stacking Ensemble):")
-for decision in monthly_decisions_stacking_strategy:
-	print(f"{decision['Month']}: {decision['Decision']}")
 
 
 """ --- 6. Calculate Strategy Returns --- """
