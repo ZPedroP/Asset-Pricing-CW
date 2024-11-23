@@ -280,17 +280,6 @@ monthly_decisions_stacking_strategy = [
 
 """ --- 6. Calculate Strategy Returns --- """
 
-for name, result in results.items():
-    # Compute strategy returns on a 6-month compounded basis
-	test_data[f"{name}_6M_Return"] = np.where(
-		result["predictions"] == 1,
-		test_data["6M_Return"],  # Use 6M market compounded return
-		test_data["6M_Cumulative_Risk_Free_Rate"]  # Use 6M risk-free compounded return
-	)
-
-	# Compute cumulative performance over time
-	test_data[f"{name}_Cumulative_Return"] = test_data[f"{name}_6M_Return"].cumsum()
-
 # Calculate log returns for each model
 for name, result in results.items():
     # Compute strategy log returns
@@ -303,11 +292,6 @@ for name, result in results.items():
     # Compute cumulative log returns
     test_data[f"{name}_Cumulative_Log_Return"] = test_data[f"{name}_Log_Return"].cumsum()
 
-# Stacking Strategy cumulative returns
-test_data["Stacking_Strategy_Return"] = stacking_strategy_returns  # Ensure it's log-based
-# Compute cumulative performance for the stacking strategy
-test_data["Stacking_Cumulative_Return"] = test_data["Stacking_Strategy_Return"].cumsum()
-
 # Calculate log returns for Stacking Strategy
 test_data["Stacking_Log_Return"] = np.where(
     stacking_predictions == 1,
@@ -318,11 +302,11 @@ test_data["Stacking_Log_Return"] = np.where(
 test_data["Stacking_Cumulative_Log_Return"] = test_data["Stacking_Log_Return"].cumsum()
 
 # Assuming 'results' dictionary contains predictions for each model
-# Replace "Random Forest" with the name of the model you want predictions for
 for name, result in results.items():
 	test_data[f"{name}_Predictions"] = results[name]["predictions"]
 
 test_data["Stacking_Ensemble_Predictions"] = stacking_predictions
+
 # Filter rows for every 6 months from the first month
 six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
 
@@ -352,50 +336,7 @@ print(f"Model Predictions saved to {output_file}")
 
 """ --- 7. Plot Results --- """
 
-# Plot cumulative returns of all models and the market
-plt.figure(figsize=(14, 8))
-
-for name in results.keys():
-	plt.plot(
-		test_data["Date"],
-		test_data[f"{name}_Cumulative_Return"],
-		label=f"{name} Strategy"
-	)
-
-# Plot Stacking Ensemble results
-plt.plot(
-	test_data["Date"],
-	test_data["Stacking_Cumulative_Return"],
-	label="Stacking Ensemble Strategy",
-)
-
-# Plot cumulative market returns (6M Cumulative)
-plt.plot(
-    test_data["Date"],
-    test_data["6M_Return"].cumsum(),
-    label="Market Returns (6M Cumulative)",
-    linestyle="--",
-    linewidth=2
-)
-
-# Plot cumulative risk-free returns (6M Cumulative)
-plt.plot(
-    test_data["Date"],
-    test_data["6M_Cumulative_Risk_Free_Rate"].cumsum(),
-    label="Risk-Free Returns (6M Cumulative)",
-    linestyle="-.",
-    linewidth=1.5
-)
-
-plt.legend()
-plt.title("Cumulative Returns of Different Models")
-plt.xlabel("Date")
-plt.ylabel("Cumulative Return")
-plt.grid()
-plt.show()
-
-
-# Plot cumulative log returns of all models and the market
+# Plot Cumulative log returns of all models and the market
 plt.figure(figsize=(14, 8))
 
 for name in results.keys():
