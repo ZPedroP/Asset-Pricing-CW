@@ -16,56 +16,98 @@ from sklearn.ensemble import StackingClassifier
 
 """ --- 1. Fetch FTSE Data from Yahoo Finance --- """
 
-# Fetch FTSE 100 data
-ftse_ticker = "^FTSE"  # FTSE 100 Index
-ftse_data = yf.download(ftse_ticker, start="1995-12-31", end="2024-11-30", interval="1mo")
+def fetch_market_data(ticker="^FTSE", start_date="1995-12-31", end_date="2024-11-30", interval="1mo"):
+	"""
+	Fetch market data from Yahoo Finance and compute derived features.
+	
+	Args:
+		ticker (str): The stock ticker symbol.
+		start_date (str): The start date for historical data.
+		end_date (str): The end date for historical data.
+		interval (str): Data interval (e.g., '1mo' for monthly).
 
-# Add derived features
-ftse_data['Date'] = ftse_data.index
-ftse_data['Return'] = (ftse_data['Adj Close'] / ftse_data['Adj Close'].shift(1)) - 1  # Linear return
-ftse_data['6M_Return'] = ftse_data['Return'].rolling(window=6).sum()
-ftse_data['Volatility'] = ftse_data['Return'].rolling(6).std()
-ftse_data['Moving_Avg'] = ftse_data['Return'].rolling(6).mean()
-ftse_data['Momentum'] = ftse_data['Return'] - ftse_data['Moving_Avg']
+	Returns:
+		pd.DataFrame: Processed market data with derived features.
+	"""
+	# Fetch data using yfinance
+	data = yf.download(ticker, start=start_date, end=end_date, interval=interval)
 
-# Filter dates
-ftse_data = ftse_data[(ftse_data['Date'] >= '1995-12-31') & (ftse_data['Date'] <= '2024-11-30')]
-ftse_data.reset_index(drop=True, inplace=True)
+	# Add derived features
+	data['Date'] = data.index
+	data['Return'] = (data['Adj Close'] / data['Adj Close'].shift(1)) - 1  # Monthly returns
+	data['6M_Return'] = data['Return'].rolling(window=6).sum()  # 6-month cumulative return
+	data['Volatility'] = data['Return'].rolling(6).std()  # Rolling standard deviation (volatility)
+	data['Moving_Avg'] = data['Return'].rolling(6).mean()  # Rolling mean (moving average)
+	data['Momentum'] = data['Return'] - data['Moving_Avg']  # Momentum indicator
+	data.reset_index(drop=True, inplace=True)
+
+	return data
 
 
 """ --- 2. Load Risk-Free Rate Data --- """
 
-# Load risk-free rate data
-script_dir = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(script_dir, "cw2024AP.xlsx")
-risk_free_data = pd.read_excel(file_path, sheet_name="Sheet1", skiprows=3)
-risk_free_data = risk_free_data[["Unnamed: 0", "Risk Free Asset"]]
-risk_free_data.columns = ["Date", "Risk_Free_Asset"]
-risk_free_data["Date"] = pd.to_datetime(risk_free_data["Date"], errors="coerce")
-risk_free_data["Risk_Free_Asset"] = pd.to_numeric(risk_free_data["Risk_Free_Asset"], errors="coerce")
+def load_risk_free_data(filename="cw2024AP.xlsx", sheet_name="Sheet1", skiprows=3, start_date="1995-12-31", end_date="2024-10-31"):
+	"""
+	Load risk-free rate data and preprocess it.
+	
+	Args:
+		filename (str): Filename of the Excel file.
+		sheet_name (str): Name of the sheet containing the data.
+		skiprows (int): Number of rows to skip in the sheet.
+		start_date (str): Start date for filtering data.
+		end_date (str): End date for filtering data.
 
-# Filter dates and calculate annualized rate
-start_date = "1995-12-31"
-end_date = "2024-10-31"
-risk_free_data = risk_free_data[(risk_free_data["Date"] >= start_date) & (risk_free_data["Date"] <= end_date)]
-risk_free_data["Risk_Free_Rate"] = risk_free_data["Risk_Free_Asset"] / 100
+	Returns:
+		pd.DataFrame: Processed risk-free rate data.
+	"""
+	# Load risk-free rate data
+	script_dir = os.path.dirname(os.path.abspath(__file__))
+	filepath = os.path.join(script_dir, filename)
+	data = pd.read_excel(filepath, sheet_name=sheet_name, skiprows=skiprows)
+	data = data[["Unnamed: 0", "Risk Free Asset"]]
+	data.columns = ["Date", "Risk_Free_Asset"]
+	data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+	data["Risk_Free_Asset"] = pd.to_numeric(data["Risk_Free_Asset"], errors="coerce")
 
-# Calculate 6-month cumulative risk-free rate (cumulative)
-risk_free_data["6M_Cumulative_Risk_Free_Rate"] = risk_free_data["Risk_Free_Rate"] / 2
+	# Calculate risk-free rate as a percentage
+	data["Risk_Free_Rate"] = data["Risk_Free_Asset"] / 100
+	data["6M_Cumulative_Risk_Free_Rate"] = data["Risk_Free_Rate"] / 2  # Semi-annual rate
 
-risk_free_data.reset_index(drop=True, inplace=True)
-risk_free_data['Date'] = ftse_data['Date']
+	# Filter data based on the provided date range
+	data = data[(data["Date"] >= start_date) & (data["Date"] <= end_date)]
+	data.reset_index(drop=True, inplace=True)
+	
+	return data
 
 
 """ --- 3. Merge Datasets --- """
 
-# Merge FTSE data with risk-free data
-merged_data = pd.merge(ftse_data, risk_free_data, on="Date", how="inner")
-merged_data = merged_data.dropna()
-merged_data.reset_index(drop=True, inplace=True)
+def merge_datasets(market_data, risk_free_data):
+	"""
+	Merge market data with risk-free rate data.
+	
+	Args:
+		market_data (pd.DataFrame): Market data with derived features.
+		risk_free_data (pd.DataFrame): Risk-free rate data.
 
-# Define target: 1 if market return > risk-free rate
-merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
+	Returns:
+		pd.DataFrame: Combined dataset with target labels.
+	"""
+	# Merge data on the 'Date' column
+	risk_free_data['Date'] = market_data['Date']
+	merged_data = pd.merge(market_data, risk_free_data, on="Date", how="inner")
+	merged_data = merged_data.dropna()
+	merged_data.reset_index(drop=True, inplace=True)
+
+	# Define target variable: 1 if the market return exceeds risk-free rate, else 0
+	merged_data["Target"] = (merged_data["6M_Return"] > merged_data["6M_Cumulative_Risk_Free_Rate"]).astype(int)
+
+	return merged_data
+
+
+ftse_data = fetch_market_data()
+risk_free_data = load_risk_free_data()
+merged_data = merge_datasets(ftse_data, risk_free_data)
 
 
 """ --- 4. Define Features and Models --- """
@@ -309,6 +351,8 @@ test_data["Stacking_Ensemble_Predictions"] = stacking_predictions
 
 # Filter rows for every 6 months from the first month
 six_months_intervals = test_data.iloc[::6].reset_index(drop=True)
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Define the file path for saving predictions
 if not os.path.exists(script_dir):
