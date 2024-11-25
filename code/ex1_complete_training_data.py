@@ -427,7 +427,7 @@ def plot_cumulative_log_returns(results, test_data):
 	plt.grid()
 
 	# Save the plot as a high-resolution PNG file
-	plt.savefig('Figure_X.png', format='png', dpi=1200)
+	plt.savefig('cumulative_log_returns.png', format='png', dpi=1200)
 
 	# Show the plot
 	plt.show()
